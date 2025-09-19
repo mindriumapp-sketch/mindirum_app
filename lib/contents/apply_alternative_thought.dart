@@ -1,0 +1,300 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/widgets/custom_appbar.dart';
+import 'package:gad_app_team/features/4th_treatment/week4_alternative_thoughts.dart';
+import 'package:provider/provider.dart';
+import 'package:gad_app_team/data/user_provider.dart';
+/// DB에 저장된 B(생각) 리스트를 불러와 사용자가 선택하면
+/// Week4AlternativeThoughtsScreen으로 이동하는 화면
+class ApplyAlternativeThoughtScreen extends StatefulWidget {
+  const ApplyAlternativeThoughtScreen({super.key});
+  @override
+  State<ApplyAlternativeThoughtScreen> createState() => _ApplyAlternativeThoughtScreenState();
+}
+class _ApplyAlternativeThoughtScreenState extends State<ApplyAlternativeThoughtScreen> {
+  bool _loading = false;
+  String? _error;
+  List<String> _bList = const [];
+  String? _abcId;
+  int _beforeSud = 0;
+  int? _selectedIndex;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments as Map? ?? {};
+    _abcId = args['abcId'] as String?;
+    _beforeSud = (args['beforeSud'] as int?) ?? 0;
+    if (_bList.isEmpty && !_loading) {
+      _fetchBeliefs();
+    }
+  }
+  Future<void> _fetchBeliefs() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('uid');
+      if (uid == null || uid.isEmpty) throw Exception('사용자 식별자를 찾을 수 없습니다.');
+
+      final userDoc = await MongoService.instance.fetchUser(userId: uid);
+      if (userDoc == null) throw Exception('사용자 정보를 찾을 수 없습니다.');
+
+      final models = (userDoc['abc_models'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          <Map<String, dynamic>>[];
+      if (models.isEmpty) throw Exception('저장된 일기를 찾을 수 없습니다.');
+
+      List<String> list;
+      if (_abcId != null && _abcId!.isNotEmpty) {
+        // 특정 ABC 한 건에서만 B 목록 추출
+        final foundIndex = models.indexWhere((m) {
+          final extId = m['externalId']?.toString();
+          if (extId != null && extId.isNotEmpty && extId == _abcId) {
+            return true;
+          }
+          final seqVal = m['seq'];
+          if (seqVal == null) return false;
+          final seqStr = seqVal.toString();
+          return seqStr == _abcId;
+        });
+        if (foundIndex < 0) throw Exception('해당 ABC를 찾을 수 없습니다.');
+        final target = models[foundIndex];
+        final belief = target['belief'];
+        list = _parseBeliefList(belief);
+      } else {
+        // 전체 ABC에서 B들을 모아 유니크 리스트 생성
+        // 최신 항목이 앞에 오도록 createdAt 내림차순으로 순회
+        models.sort((a, b) {
+          DateTime? da;
+          DateTime? db;
+          final ra = a['createdAt'];
+          final rb = b['createdAt'];
+          if (ra is DateTime) {
+            da = ra;
+          } else if (ra is String) {
+            da = DateTime.tryParse(ra);
+          }
+          if (rb is DateTime) {
+            db = rb;
+          } else if (rb is String) {
+            db = DateTime.tryParse(rb);
+          }
+          if (da == null && db == null) return 0;
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return db.compareTo(da);
+        });
+        final seen = <String>{};
+        final acc = <String>[];
+        for (final m in models) {
+          final belief = m['belief'];
+          final items = _parseBeliefList(belief);
+          for (final s in items) {
+            if (!seen.contains(s)) {
+              seen.add(s);
+              acc.add(s);
+            }
+          }
+        }
+        list = acc;
+        // 표기를 위해 최신 항목의 seq를 보관(선택)
+        final latest = models.firstWhere(
+          (m) => (m['externalId']?.toString().isNotEmpty ?? false) ||
+              (m['seq'] != null),
+          orElse: () => const <String, dynamic>{},
+        );
+        final dynamic latestId = latest['externalId'] ?? latest['seq'];
+        if (latestId != null) {
+          _abcId = latestId.toString();
+        }
+      }
+      setState(() {
+        _bList = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+  List<String> _parseBeliefList(dynamic belief) {
+    if (belief == null) return const [];
+    if (belief is List) {
+      return belief.map((e) => e?.toString() ?? '').where((s) => s.trim().isNotEmpty).toList();
+    }
+    if (belief is String) {
+      final s = belief.trim();
+      if (s.isEmpty) return const [];
+      final parts = s.split(RegExp(r'[,\n;]+')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      return parts.isEmpty ? [s] : parts;
+    }
+    final s = belief.toString().trim();
+    return s.isEmpty ? const [] : [s];
+  }
+  void _onSelect(String b) {
+    final all = _bList;
+    final remaining = List<String>.from(all)..remove(b);
+    final args = ModalRoute.of(context)?.settings.arguments as Map? ?? {};
+    final dynamic diary = args['diary'];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        settings: RouteSettings(
+          arguments: {
+            'origin': 'apply',
+            'diary': diary
+          }
+        ),
+        builder: (_) => Week4AlternativeThoughtsScreen(
+          previousChips: [b],
+          beforeSud: _beforeSud,
+          remainingBList: remaining,
+          allBList: all,
+          originalBList: all,
+          abcId: _abcId,
+        ),
+      ),
+    );
+  }
+  @override
+  Widget build(BuildContext context) {
+    final userName = context.read<UserProvider>().userName;
+    return Scaffold(
+      appBar: const CustomAppBar(title: '도움이 되는 생각 찾기'),
+      backgroundColor: const Color(0xFFFBF8FF),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
+                    : Card(
+                        elevation: 8,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(28),
+                        ),
+                        color: Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28.0,
+                            vertical: 32.0,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                '$userName님',
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF5B3EFF),
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Container(
+                                width: 48,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF5B3EFF).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              const Text(
+                                '어떤 생각을 대상으로 도움이 되는 생각을 찾아볼까요?',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
+                                  height: 1.6,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              if (_bList.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Text('저장된 생각(B)이 없습니다.'),
+                                )
+                              else
+                                Flexible(
+                                  child: ListView.separated(
+                                    shrinkWrap: true,
+                                    itemCount: _bList.length,
+                                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                    itemBuilder: (context, index) {
+                                      final b = _bList[index];
+                                      final selected = _selectedIndex == index;
+                                      return Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: selected ? const Color(0xFF2962F6) : Colors.grey.shade300,
+                                            width: selected ? 2 : 1,
+                                          ),
+                                        ),
+                                        child: CheckboxListTile(
+                                          value: selected,
+                                          onChanged: (v) {
+                                            setState(() {
+                                              _selectedIndex = v == true ? index : null;
+                                            });
+                                          },
+                                          controlAffinity: ListTileControlAffinity.leading,
+                                          title: Text(b),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              const SizedBox(height: 24),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 56,
+                                child: ElevatedButton(
+                                  onPressed: (_selectedIndex != null && _bList.isNotEmpty)
+                                      ? () {
+                                          final b = _bList[_selectedIndex!];
+                                          _onSelect(b);
+                                        }
+                                      : null,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2962F6),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: const Text(
+                                    '도움이 되는 생각을 찾아볼게요!',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+          ),
+        ),
+      ),
+    );
+  }
+}

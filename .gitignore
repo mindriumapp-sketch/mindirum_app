@@ -1,0 +1,38 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# iOS
+ios/Pods/
+ios/Podfile.lock
+ios/Runner.xcworkspace/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# Android
+android/.gradle/
+android/build/
+**/local.properties
+**/*.keystore
+**/*.jks
+
+# macOS
+macos/Pods/
+macos/Podfile.lock
+macos/Runner.xcworkspace/
+macos/Flutter/ephemeral/
+
+# Xcode DerivedData
+**/DerivedData/
+*.xcuserdatad
+*.xcworkspace/xcuserdata/
+
+# VSCode
+.vscode/
+
+# Env files
+.env
