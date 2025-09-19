@@ -5,6 +5,7 @@
 build/
 .flutter-plugins
 .flutter-plugins-dependencies
+lib/firebase_options.dart
 
 # iOS
 ios/Pods/
