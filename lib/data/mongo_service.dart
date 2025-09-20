@@ -19,17 +19,16 @@ class MongoService {
 
   MongoService._();
   static final MongoService instance = MongoService._();
-  
+
   static final String _envUrl = dotenv.env['MONGO_URL'] ?? '';
-  static final String _envTlsInsecure = dotenv.env['MONGO_TLS_INSECURE'] ?? 'false';
+  static final String _envTlsInsecure =
+      dotenv.env['MONGO_TLS_INSECURE'] ?? 'false';
 
   /// 접속 URI 구성
   /// - 기본은 SRV 문자열 사용
   /// - 명시적으로 tls=true (필요 시 tlsAllowInvalidCertificates) 부여
   static String _buildUri() {
-    final base = _envUrl.isNotEmpty
-        ? _envUrl
-        : '';
+    final base = _envUrl.isNotEmpty ? _envUrl : '';
 
     final sep = base.contains('?') ? '&' : '?';
     final insecure = _envTlsInsecure.toLowerCase() == 'true';
@@ -74,34 +73,66 @@ class MongoService {
     return isHex24 ? ObjectId.fromHexString(userId) : userId;
   }
 
-  Future<void> appendScreenTime({
+  Future<void> createScreenTimeEntry({
     required String userId,
     required DateTime startTime,
-    DateTime? backgroundStart,
-    DateTime? backgroundEnd,
-    required DateTime endTime,
-    required double durationMinutes,
   }) async {
     await ensureUserDoc(userId: userId);
     await _ensureOpen();
     final key = _userKey(userId);
     final entry = <String, dynamic>{
       'startTime': startTime.toUtc(),
-      'endTime': endTime.toUtc(),
-      'durationMinutes': durationMinutes,
+      'background': <Map<String, dynamic>>[],
     };
-    if (backgroundStart != null) {
-      entry['backgroundStart'] = backgroundStart.toUtc();
-    }
-    if (backgroundEnd != null) {
-      entry['backgroundEnd'] = backgroundEnd.toUtc();
-    }
     await _users!.updateOne(
       where.eq('_id', key),
       ModifierBuilder().push('user.screenTime', entry),
-    ); 
+    );
   }
 
+  Future<void> addScreenTimeBackgroundEvent({
+    required String userId,
+    required DateTime startTime,
+    required String type,
+    required DateTime timestamp,
+  }) async {
+    await ensureUserDoc(userId: userId);
+    await _ensureOpen();
+    final key = _userKey(userId);
+    final startUtc = startTime.toUtc();
+    await _users!.updateOne(
+      where.eq('_id', key).eq('user.screenTime.startTime', startUtc),
+      {
+        r'$push': {
+          r'user.screenTime.$.background': {
+            'type': type,
+            'timestamp': timestamp.toUtc(),
+          },
+        },
+      },
+    );
+  }
+
+  Future<void> completeScreenTimeEntry({
+    required String userId,
+    required DateTime startTime,
+    required DateTime endTime,
+    required double durationMinutes,
+  }) async {
+    await ensureUserDoc(userId: userId);
+    await _ensureOpen();
+    final key = _userKey(userId);
+    final startUtc = startTime.toUtc();
+    await _users!.updateOne(
+      where.eq('_id', key).eq('user.screenTime.startTime', startUtc),
+      {
+        r'$set': {
+          r'user.screenTime.$.endTime': endTime.toUtc(),
+          r'user.screenTime.$.durationMinutes': durationMinutes,
+        },
+      },
+    );
+  }
 
   /// CustomChip 카운터 필드명 (타입별)
   String _customChipCounterField(String type) => 'seq_customTags_$type';
@@ -213,8 +244,7 @@ class MongoService {
     await _ensureOpen();
 
     // 1) 24-hex면 ObjectId로 시도
-    if (userId.length == 24 &&
-        RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(userId)) {
+    if (userId.length == 24 && RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(userId)) {
       try {
         final oid = ObjectId.fromHexString(userId);
         final byOid = await _users!.findOne(where.eq('_id', oid));
@@ -303,7 +333,7 @@ class MongoService {
           'createdAt': DateTime.now(),
           'diaries': <Map<String, dynamic>>[],
           'customTags': <Map<String, dynamic>>[],
-        'screenTime': <Map<String, dynamic>>[],
+          'screenTime': <Map<String, dynamic>>[],
         }),
       upsert: true,
     );
@@ -422,8 +452,12 @@ class MongoService {
 
     // 3) seq 결정: 우선 카운터 → 없으면 기존 칩에서 최대값+1
     int seq = _intFrom(after?[counterField]);
-    if (seq <= 0) seq = _intFrom(after?[legacyCounterField]);
-    if (seq <= 0) seq = _maxSeqFromChips(existingChips, type: normalizedType) + 1;
+    if (seq <= 0) {
+      seq = _intFrom(after?[legacyCounterField]);
+    }
+    if (seq <= 0) {
+      seq = _maxSeqFromChips(existingChips, type: normalizedType) + 1;
+    }
 
     // 4) 카운터 동기화(명시 세팅)
     await _users!.updateOne(where.eq('_id', key), {
@@ -454,10 +488,7 @@ class MongoService {
     await ensureUserDoc(userId: userId);
     await _users!.updateOne(where.eq('_id', _userKey(userId)), {
       r'$pull': {
-        'user.customTags': {
-          'type': type,
-          'name': name,
-        },
+        'user.customTags': {'type': type, 'name': name},
       },
     });
   }
@@ -501,10 +532,11 @@ class MongoService {
     }
 
     // 3) externalId 구성
-    final externalId = (data['externalId'] is String &&
-            (data['externalId'] as String).isNotEmpty)
-        ? data['externalId'] as String
-        : 'diary_${seq.toString().padLeft(5, '0')}';
+    final externalId =
+        (data['externalId'] is String &&
+                (data['externalId'] as String).isNotEmpty)
+            ? data['externalId'] as String
+            : 'diary_${seq.toString().padLeft(5, '0')}';
 
     // 4) payload 정리
     final sanitized = Map<String, dynamic>.from(data)..remove('externalId');

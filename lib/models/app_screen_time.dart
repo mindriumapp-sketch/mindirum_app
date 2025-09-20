@@ -16,9 +16,9 @@ class AppLifecycleLogger with WidgetsBindingObserver {
   bool _isInForeground = false;
   DateTime? _sessionStart;
   DateTime? _currentBackgroundStart;
-  DateTime? _lastBackgroundStart;
-  DateTime? _lastBackgroundEnd;
   Duration _backgroundAccumulated = Duration.zero;
+  bool _hasPersistedSession = false;
+  Future<void>? _sessionPersisting;
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final now = DateTime.now();
@@ -41,10 +41,11 @@ class AppLifecycleLogger with WidgetsBindingObserver {
   void _startSession(DateTime timestamp) {
     _sessionStart = timestamp;
     _currentBackgroundStart = null;
-    _lastBackgroundStart = null;
-    _lastBackgroundEnd = null;
     _backgroundAccumulated = Duration.zero;
     _isInForeground = true;
+    _hasPersistedSession = false;
+    _sessionPersisting = null;
+    unawaited(_ensureSessionEntry());
     _logStart(timestamp);
   }
 
@@ -55,11 +56,10 @@ class AppLifecycleLogger with WidgetsBindingObserver {
     }
     if (!_isInForeground) {
       if (_currentBackgroundStart != null) {
-        _lastBackgroundStart = _currentBackgroundStart;
-        _lastBackgroundEnd = timestamp;
         _backgroundAccumulated += timestamp.difference(
           _currentBackgroundStart!,
         );
+        _persistBackgroundEvent('exit', timestamp);
         _currentBackgroundStart = null;
       }
       _logForegroundResume(timestamp);
@@ -71,54 +71,54 @@ class AppLifecycleLogger with WidgetsBindingObserver {
     if (!_isInForeground) return;
     if (_sessionStart == null) return;
     _isInForeground = false;
-    _currentBackgroundStart ??= timestamp;
+    if (_currentBackgroundStart == null) {
+      _currentBackgroundStart = timestamp;
+      _persistBackgroundEvent('enter', timestamp);
+    }
     _logBackground(timestamp);
   }
 
   void _handleTerminate(DateTime timestamp) {
     if (_sessionStart == null) return;
-    _logTerminate(timestamp);
     if (_currentBackgroundStart != null) {
-      _lastBackgroundStart = _currentBackgroundStart;
-      _lastBackgroundEnd = timestamp;
       _backgroundAccumulated += timestamp.difference(_currentBackgroundStart!);
+      _persistBackgroundEvent('exit', timestamp);
       _currentBackgroundStart = null;
     }
-    unawaited(_persistSession(timestamp));
+    _logTerminate(timestamp);
+    unawaited(_finalizeSession(timestamp));
     _resetSessionState();
   }
 
-  Future<void> _persistSession(DateTime endTime) async {
+  Future<void> _finalizeSession(DateTime endTime) async {
     final start = _sessionStart;
     if (start == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('uid');
-    if (userId == null || userId.isEmpty) return;
     final totalDuration = endTime.difference(start);
     final effective = totalDuration - _backgroundAccumulated;
     if (effective.isNegative) return;
     final durationMinutes = effective.inSeconds / 60.0;
-    try {
-      await MongoService.instance.appendScreenTime(
-        userId: userId,
-        startTime: start,
-        endTime: endTime,
-        backgroundStart: _lastBackgroundStart,
-        backgroundEnd: _lastBackgroundEnd,
-        durationMinutes: durationMinutes,
-      );
-    } catch (e, st) {
-      debugPrint('screenTime record failed: $e\n$st');
-    }
+    await _ensureSessionEntry();
+    await _withUserId((userId) async {
+      try {
+        await MongoService.instance.completeScreenTimeEntry(
+          userId: userId,
+          startTime: start,
+          endTime: endTime,
+          durationMinutes: durationMinutes,
+        );
+      } catch (e, st) {
+        debugPrint('screenTime complete failed: $e\n$st');
+      }
+    });
   }
 
   void _resetSessionState() {
     _sessionStart = null;
     _currentBackgroundStart = null;
-    _lastBackgroundStart = null;
-    _lastBackgroundEnd = null;
     _backgroundAccumulated = Duration.zero;
     _isInForeground = false;
+    _hasPersistedSession = false;
+    _sessionPersisting = null;
   }
 
   void _logStart(DateTime timestamp) {
@@ -142,6 +142,58 @@ class AppLifecycleLogger with WidgetsBindingObserver {
     if (_sessionStart != null) {
       _handleTerminate(DateTime.now());
     }
+  }
+
+  void _persistBackgroundEvent(String type, DateTime timestamp) {
+    final start = _sessionStart;
+    if (start == null) return;
+    unawaited(() async {
+      await _ensureSessionEntry();
+      await _withUserId((userId) async {
+        try {
+          await MongoService.instance.addScreenTimeBackgroundEvent(
+            userId: userId,
+            startTime: start,
+            type: type,
+            timestamp: timestamp,
+          );
+        } catch (e, st) {
+          debugPrint('screenTime background $type failed: $e\n$st');
+        }
+      });
+    }());
+  }
+
+  Future<void> _ensureSessionEntry() {
+    if (_hasPersistedSession) return Future.value();
+    final start = _sessionStart;
+    if (start == null) return Future.value();
+    final inFlight = _sessionPersisting;
+    if (inFlight != null) return inFlight;
+
+    final future = _withUserId((userId) async {
+      try {
+        await MongoService.instance.createScreenTimeEntry(
+          userId: userId,
+          startTime: start,
+        );
+        _hasPersistedSession = true;
+      } catch (e, st) {
+        debugPrint('screenTime start failed: $e\n$st');
+      }
+    }).whenComplete(() {
+      _sessionPersisting = null;
+    });
+
+    _sessionPersisting = future;
+    return future;
+  }
+
+  Future<void> _withUserId(Future<void> Function(String userId) action) async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('uid');
+    if (userId == null || userId.isEmpty) return;
+    await action(userId);
   }
 }
 
