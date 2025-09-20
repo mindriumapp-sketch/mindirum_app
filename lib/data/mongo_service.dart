@@ -74,6 +74,35 @@ class MongoService {
     return isHex24 ? ObjectId.fromHexString(userId) : userId;
   }
 
+  Future<void> appendScreenTime({
+    required String userId,
+    required DateTime startTime,
+    DateTime? backgroundStart,
+    DateTime? backgroundEnd,
+    required DateTime endTime,
+    required double durationMinutes,
+  }) async {
+    await ensureUserDoc(userId: userId);
+    await _ensureOpen();
+    final key = _userKey(userId);
+    final entry = <String, dynamic>{
+      'startTime': startTime.toUtc(),
+      'endTime': endTime.toUtc(),
+      'durationMinutes': durationMinutes,
+    };
+    if (backgroundStart != null) {
+      entry['backgroundStart'] = backgroundStart.toUtc();
+    }
+    if (backgroundEnd != null) {
+      entry['backgroundEnd'] = backgroundEnd.toUtc();
+    }
+    await _users!.updateOne(
+      where.eq('_id', key),
+      ModifierBuilder().push('user.screenTime', entry),
+    ); 
+  }
+
+
   /// CustomChip 카운터 필드명 (타입별)
   String _customChipCounterField(String type) => 'seq_customTags_$type';
 
@@ -241,6 +270,7 @@ class MongoService {
         'createdAt': now,
         'diaries': <Map<String, dynamic>>[],
         'customTags': <Map<String, dynamic>>[],
+        'screenTime': <Map<String, dynamic>>[],
       },
     };
     await _users!.insertOne(doc);
@@ -273,6 +303,7 @@ class MongoService {
           'createdAt': DateTime.now(),
           'diaries': <Map<String, dynamic>>[],
           'customTags': <Map<String, dynamic>>[],
+        'screenTime': <Map<String, dynamic>>[],
         }),
       upsert: true,
     );

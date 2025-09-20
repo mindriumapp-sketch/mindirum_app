@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 import 'package:gad_app_team/widgets/custom_appbar.dart';
 import 'package:gad_app_team/features/4th_treatment/week4_alternative_thoughts.dart';
 import 'package:provider/provider.dart';

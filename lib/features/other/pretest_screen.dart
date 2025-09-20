@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gad_app_team/common/constants.dart';
 import 'package:gad_app_team/widgets/navigation_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 
 /// 수면 건강 상태 사전 조사 화면
 class PreTestScreen extends StatefulWidget {

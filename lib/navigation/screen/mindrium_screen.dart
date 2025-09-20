@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gad_app_team/common/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 
 class MindriumScreen extends StatelessWidget {
   const MindriumScreen({super.key});

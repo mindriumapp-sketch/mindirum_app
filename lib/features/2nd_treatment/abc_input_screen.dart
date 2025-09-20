@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../common/constants.dart';
 import '../../widgets/custom_appbar.dart';
 import '../../widgets/navigation_button.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 // import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gad_app_team/data/mongo_provider.dart';

@@ -5,7 +5,7 @@ import 'package:gad_app_team/utils/bold_text_parser.dart';
 import 'package:gad_app_team/widgets/custom_appbar.dart';
 import 'package:gad_app_team/widgets/navigation_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 
 class EducationPage extends StatefulWidget {
   final List<String> jsonPrefixes;

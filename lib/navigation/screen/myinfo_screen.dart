@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gad_app_team/common/constants.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 
 import 'package:gad_app_team/features/settings/setting_screen.dart';
 import 'package:gad_app_team/widgets/input_text_field.dart';

@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 // ─── Project ────────────────────────────────────────────────────────────
 import 'package:gad_app_team/common/constants.dart';
 import 'package:gad_app_team/data/mongo_provider.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gad_app_team/widgets/activitiy_card.dart';
 import 'package:gad_app_team/widgets/card_container.dart';

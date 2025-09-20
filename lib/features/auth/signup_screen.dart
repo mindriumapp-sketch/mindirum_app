@@ -8,7 +8,7 @@ import 'package:gad_app_team/widgets/input_text_field.dart';
 import 'package:gad_app_team/widgets/primary_action_button.dart';
 import 'package:gad_app_team/widgets/passwod_field.dart';
 
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 
 /// 회원가입 화면 - 이메일, 이름, 비밀번호, 마인드리움 코드로 회원가입
 class SignupScreen extends StatefulWidget {

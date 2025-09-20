@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:gad_app_team/models/mongo_service.dart';
+import 'package:gad_app_team/data/mongo_service.dart';
 
 class MongoProvider with ChangeNotifier {
   final MongoService _svc = MongoService.instance;
